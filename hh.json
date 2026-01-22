@@ -1,0 +1,384 @@
+{
+  "name": "Задание 4",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                4
+              ],
+              "triggerAtHour": 9,
+              "triggerAtMinute": 35
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -656,
+        -16
+      ],
+      "id": "eacfdb87-880a-4ff3-855d-f5be2b54441a",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://api.hh.ru/vacancies",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "Data Scientist"
+            },
+            {
+              "name": "area",
+              "value": "1"
+            },
+            {
+              "name": "per_page",
+              "value": "10"
+            },
+            {
+              "name": "page",
+              "value": "0"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-career-bot"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        -16
+      ],
+      "id": "a16639b2-e572-4396-9484-8d4f0156c8d7",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const limit = 10;\n\n// разворачиваем все вакансии из items\nconst allVacancies = $input.all()[0].json.items || [];\n\n// формируем description из snippet\nconst withSnippet = allVacancies.map(item => {\n  const snippet = item.snippet || {};\n  const requirement = snippet.requirement || '';\n  const responsibility = snippet.responsibility || '';\n  const description = (requirement + ' ' + responsibility).trim();\n\n  return {\n    json: {\n      ...item,          // сохраняем все поля вакансии\n      description: description\n    }\n  };\n});\n\n// фильтруем пустые и оставляем только limit\nconst filtered = withSnippet.filter(item => item.json.description !== '').slice(0, limit);\n\nreturn filtered;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        0
+      ],
+      "id": "71619cdd-7c8f-4602-b420-9a763b179140",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -48,
+        0
+      ],
+      "id": "0f555e9e-1e84-45cf-bb38-cc40a687a743",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        160,
+        0
+      ],
+      "id": "9e920ca5-15da-49cf-a366-e04779ba743b"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Извлеки из описания вакансии список ключевых навыков и требований.\nВерни только список, через запятую, без пояснений.\n\nТекст вакансии:\n{{ $json.description }}\nТы анализируешь текст вакансии.\nТвоя задача — извлечь только навыки и требования, без лишних слов.\nНе пиши ничего, кроме списка навыков.\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        304,
+        48
+      ],
+      "id": "345c6610-427c-4ad3-b0d0-b800238aa894",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "GigaChat/GigaChat-2-Max",
+          "mode": "list",
+          "cachedResultName": "GigaChat/GigaChat-2-Max"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        176,
+        256
+      ],
+      "id": "87033f79-cc3d-41ac-978b-b18996c20590",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "lhjhLG1ZPWKXp4nX",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "skills",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        656,
+        48
+      ],
+      "id": "2bd9d09d-ef61-48cb-a0fb-40b86ffe387e",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ниже приведены списки навыков из вакансий.\n\n1) Приведи навыки к единому нормативному виду (python/питон → python).\n2) Посчитай, сколько раз встречается каждый навык.\n3) Верни топ-15 самых частых навыков в формате:\n\nнавык: количество\n\nДанные:\n{{ JSON.stringify($json.skills)}}\n\nТы выполняешь аналитическую задачу.\nОтвечай строго в заданном формате.\nБез пояснений и лишнего текста.\n\nНужно соблюсти четкую структуру итогового текста:\nФорма/сценарий дайджеста должна выглядеть так:\n\nНа этой неделе я спарсил N свежих вакансий по выбранному тобой направлению. Самыми популярными являются следующие требования:\n\nтребование 1: количество раз\n\nтребование 2: количество раз\n\nтребование 3: количество раз\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        864,
+        48
+      ],
+      "id": "2f4a4105-7336-46d8-9d63-083582e9ff55",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "GigaChat/GigaChat-2-Max",
+          "mode": "list",
+          "cachedResultName": "GigaChat/GigaChat-2-Max"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        736,
+        256
+      ],
+      "id": "e2f73fb3-4b8a-4195-be17-4a001a327021",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "lhjhLG1ZPWKXp4nX",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText = $input.all()[0].json.output;\n\nconst lines = rawText\n  .split('\\n')\n  .map(line => line.trim())\n  .filter(line => line && line.includes(':'));\n\nconst skills = lines.map(line => {\n  const match = line.match(/^(.+?):\\s*(\\d+)$/);\n  if (!match) return null;\n  return {\n    skill: match[1].trim(),\n    count: Number(match[2])\n  };\n}).filter(Boolean);\n\nskills.sort((a, b) => b.count - a.count);\n\nconst topSkills = skills.slice(0, 15);\n\nconst vacanciesCount = 10; \n\nlet resultText =\n  `На этой неделе я спарсил ${vacanciesCount} свежих вакансий по выбранному тобой направлению. ` +\n  `Самыми популярными являются следующие требования:\\n\\n`;\n\nresultText += topSkills\n  .map(item => `${item.skill}: ${item.count}`)\n  .join('\\n');\n\nreturn [\n  {\n    json: {\n      output: resultText\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        48
+      ],
+      "id": "88e229fa-225a-44ad-bbba-c0f455d1d5cf",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "chatId": "-1003666243428",
+        "text": "=={{ $json.output }}\n",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1424,
+        48
+      ],
+      "id": "46aec5a9-f5b2-445c-a6aa-3493558b27e2",
+      "name": "Send a text message",
+      "webhookId": "bc5c82bf-3ba4-48e4-9881-8e8b9a3e725a",
+      "credentials": {
+        "telegramApi": {
+          "id": "5bphb1pkkEHd9Vog",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "dae9eec4-9826-48ed-8200-cad78d3715bc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "45e2ab82df7365b39ec1ef475ac7e39f6d70271db44d455ac639f953fb8f82e8"
+  },
+  "id": "MITE5gcSEw0XTD2g",
+  "tags": []
+}
